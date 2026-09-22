@@ -4,13 +4,22 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+    "start": "node app.js"
+      },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/munna-pp/cicd-demo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/munna-pp/cicd-demo/issues"
+  },
+  "homepage": "https://github.com/munna-pp/cicd-demo#readme"
 }
