@@ -11,11 +11,9 @@ on:
 
 jobs:
   test-and-build:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout source code
         uses: actions/checkout@v4
 
@@ -27,6 +25,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run tests
+        run: npm test
 
       - name: Build Docker image
         run: docker build -t cicd-demo:${{ github.sha }} .
