@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,16 +11,14 @@ on:
 
 jobs:
   test-and-build:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1. Download source code from GitHub
+      # 1. Get the source code from GitHub
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
+      # 2. Install Node.js 22
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -31,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 4. Run automated tests
+      # 4. Run application tests
       - name: Run tests
         run: npm test
 
@@ -49,3 +47,16 @@ jobs:
       # 7. Push Docker image to Docker Hub
       - name: Push Docker image
         run: docker push munnapp/cicd-demo:${{ github.sha }}
+
+      # 8. Deploy the new image to EC2
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull munnapp/cicd-demo:${{ github.sha }}
+            docker stop cicd-demo || true
+            docker rm cicd-demo || true
+            docker run -d --name cicd-demo -p 3000:3000 munnapp/cicd-demo:${{ github.sha }}
