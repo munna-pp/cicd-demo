@@ -1937,5 +1937,5 @@ docker rm CONTAINER
 
 
 app.listen(PORT, () => {
-  console.log(\`Application running on port \${PORT}\`);
+  console.log(`Application running on port ${PORT}`);
 });
