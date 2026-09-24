@@ -1,62 +1,266 @@
-name: CI/CD Pipeline
+name: CI-CD Pipeline
 
 on:
+
+  # Automatic CI/CD for development
   push:
     branches:
-      - main
+      - develop
+      - staging
 
+  # Run CI when Pull Requests target staging or main
   pull_request:
     branches:
+      - staging
       - main
 
+  # Manual production deployment
+  workflow_dispatch:
+
 jobs:
-  test-and-build:
+
+  # ============================================================
+  # CI
+  # ============================================================
+
+  test:
+
+    name: Test Application
+
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Get the source code from GitHub
+
+      # Get source code
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      # 2. Install Node.js 22
+      # Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      # 3. Install project dependencies
+      # Install dependencies
       - name: Install dependencies
         run: npm ci
 
-      # 4. Run application tests
+      # Run tests
       - name: Run tests
         run: npm test
 
-      # 5. Login to Docker Hub
+
+  # ============================================================
+  # BUILD + PUSH DOCKER IMAGE
+  # Only for develop and staging pushes
+  # ============================================================
+
+  build-and-push:
+
+    name: Build and Push Docker Image
+
+    needs: test
+
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' ||
+       github.ref == 'refs/heads/staging')
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # Get source code
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Login to Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 6. Build Docker image
+      # Build Docker image
       - name: Build Docker image
-        run: docker build -t munnapp/cicd-demo:${{ github.sha }} .
+        run: |
+          docker build \
+            -t munnapp/cicd-demo:${{ github.sha }} .
 
-      # 7. Push Docker image to Docker Hub
+      # Push Docker image
       - name: Push Docker image
-        run: docker push munnapp/cicd-demo:${{ github.sha }}
+        run: |
+          docker push \
+            munnapp/cicd-demo:${{ github.sha }}
 
-      # 8. Deploy the new image to EC2
-      - name: Deploy to EC2
+
+  # ============================================================
+  # DEVELOPMENT DEPLOYMENT
+  # develop → DEV
+  # ============================================================
+
+  deploy-development:
+
+    name: Deploy to Development
+
+    needs: build-and-push
+
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/develop'
+
+    runs-on: ubuntu-latest
+
+    environment: development
+
+    steps:
+
+      - name: Deploy to Development EC2
         uses: appleboy/ssh-action@v1.2.2
         with:
+
           host: ${{ secrets.EC2_HOST }}
+
           username: ${{ secrets.EC2_USERNAME }}
+
           key: ${{ secrets.EC2_SSH_KEY }}
+
           script: |
+
+            echo "Deploying DEVELOPMENT"
+
             docker pull munnapp/cicd-demo:${{ github.sha }}
+
+            docker stop cicd-demo-dev || true
+
+            docker rm cicd-demo-dev || true
+
+            docker run -d \
+              --name cicd-demo-dev \
+              -p 3002:3000 \
+              munnapp/cicd-demo:${{ github.sha }}
+
+            echo "Development deployment completed"
+
+
+  # ============================================================
+  # STAGING / QA DEPLOYMENT
+  # staging → QA
+  # ============================================================
+
+  deploy-staging:
+
+    name: Deploy to Staging / QA
+
+    needs: build-and-push
+
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/staging'
+
+    runs-on: ubuntu-latest
+
+    environment: staging
+
+    steps:
+
+      - name: Deploy to Staging
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+
+          host: ${{ secrets.EC2_HOST }}
+
+          username: ${{ secrets.EC2_USERNAME }}
+
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+
+            echo "Deploying STAGING / QA"
+
+            docker pull munnapp/cicd-demo:${{ github.sha }}
+
+            docker stop cicd-demo-staging || true
+
+            docker rm cicd-demo-staging || true
+
+            docker run -d \
+              --name cicd-demo-staging \
+              -p 3001:3000 \
+              munnapp/cicd-demo:${{ github.sha }}
+
+            echo "Staging deployment completed"
+
+
+  # ============================================================
+  # PRODUCTION DEPLOYMENT
+  # ONLY MANUAL
+  # ============================================================
+
+  deploy-production:
+
+    name: Deploy to Production
+
+    needs: test
+
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    steps:
+
+      # Get source code
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build production image
+      - name: Build production Docker image
+        run: |
+          docker build \
+            -t munnapp/cicd-demo:${{ github.sha }} .
+
+      # Push production image
+      - name: Push production Docker image
+        run: |
+          docker push \
+            munnapp/cicd-demo:${{ github.sha }}
+
+      # Deploy to EC2
+      - name: Deploy to Production EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+
+          host: ${{ secrets.EC2_HOST }}
+
+          username: ${{ secrets.EC2_USERNAME }}
+
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+
+            echo "Deploying PRODUCTION"
+
+            docker pull munnapp/cicd-demo:${{ github.sha }}
+
             docker stop cicd-demo || true
+
             docker rm cicd-demo || true
-            docker run -d --name cicd-demo -p 3000:3000 munnapp/cicd-demo:${{ github.sha }}
+
+            docker run -d \
+              --name cicd-demo \
+              -p 3000:3000 \
+              munnapp/cicd-demo:${{ github.sha }}
+
+            echo "Production deployment completed"
